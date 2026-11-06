@@ -1492,6 +1492,7 @@ Details:
 - Team membership: deactivation does not remove the student from her team (BR-student-lifecycle); her team's roster, reports, and peer-evaluation history continue to include her.
 - Peer evaluations: once deactivated, her teammates cannot submit a new peer evaluation of her, for any week; evaluations already submitted before her deactivation are unaffected (BR-evaluatee-active).
 - A session she already holds ends on her next request (FR-SEC-active-account).
+- The section peer evaluation report keeps her every week, with her row marked inactive rather than scored 0.0.
 
 **Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-reactivate-student: Reactivate a student
 **Assumptions:**
