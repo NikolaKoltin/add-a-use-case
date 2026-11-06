@@ -30,6 +30,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import team.projectpulse.security.authorizationmanagers.*;
+import team.projectpulse.user.UserService;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -135,7 +136,7 @@ public class SecurityConfiguration {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, ActiveAccountJwtAuthenticationConverter activeAccountJwtAuthenticationConverter) throws Exception {
         return http
                 .authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests
                         // Security rules for the /courses/** endpoint.
@@ -318,7 +319,12 @@ public class SecurityConfiguration {
                 .cors(Customizer.withDefaults())
                 .httpBasic(httpBasic -> httpBasic.authenticationEntryPoint(this.customBasicAuthenticationEntryPoint))
                 .oauth2ResourceServer(oauth2ResourceServer -> oauth2ResourceServer
-                        .jwt(Customizer.withDefaults())
+                        // Set explicitly, not left to Customizer.withDefaults(): the resource server's own bean
+                        // lookup for a JwtAuthenticationConverter matches only the concrete JwtAuthenticationConverter
+                        // type (OAuth2ResourceServerConfigurer.JwtConfigurer#getJwtAuthenticationConverter), which
+                        // ActiveAccountJwtAuthenticationConverter is not — it wraps one. Left to the default lookup,
+                        // it would silently fall back to a converter with none of this class's claim configuration.
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(activeAccountJwtAuthenticationConverter))
                         .authenticationEntryPoint(this.customBearerTokenAuthenticationEntryPoint)
                         .accessDeniedHandler(this.customBearerTokenAccessDeniedHandler))
                 /* Configures the spring boot application as an OAuth2 Resource Server which authenticates all
@@ -346,8 +352,13 @@ public class SecurityConfiguration {
         return NimbusJwtDecoder.withPublicKey(this.publicKey).build();
     }
 
+    /**
+     * {@code UserService} is injected here as a method parameter, never into this class's constructor:
+     * {@code UserService} depends on the {@code passwordEncoder} bean declared in this same class, so
+     * constructor injection would be a bean-creation cycle.
+     */
     @Bean
-    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+    public ActiveAccountJwtAuthenticationConverter activeAccountJwtAuthenticationConverter(UserService userService) {
         JwtGrantedAuthoritiesConverter jwtGrantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
 
         /*
@@ -362,9 +373,13 @@ public class SecurityConfiguration {
          */
         jwtGrantedAuthoritiesConverter.setAuthorityPrefix("");
 
-        JwtAuthenticationConverter jwtAuthenticationConverter = new JwtAuthenticationConverter();
-        jwtAuthenticationConverter.setJwtGrantedAuthoritiesConverter(jwtGrantedAuthoritiesConverter);
-        return jwtAuthenticationConverter;
+        JwtAuthenticationConverter delegate = new JwtAuthenticationConverter();
+        delegate.setJwtGrantedAuthoritiesConverter(jwtGrantedAuthoritiesConverter);
+
+        // FR-SEC-active-account: deny a deactivated or deleted account on its very next request, not merely at
+        // its next login. Wired explicitly into securityFilterChain()'s .jwt(jwt -> jwt.jwtAuthenticationConverter(...))
+        // below, not left to Spring Security's own bean lookup (see the comment there for why).
+        return new ActiveAccountJwtAuthenticationConverter(delegate, userService);
     }
 
     /**

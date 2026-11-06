@@ -4,6 +4,7 @@ import team.projectpulse.section.Section;
 import team.projectpulse.section.SectionRepository;
 import team.projectpulse.system.UserUtils;
 import team.projectpulse.system.exception.ObjectNotFoundException;
+import team.projectpulse.system.exception.StudentAlreadyDeactivatedException;
 import team.projectpulse.user.userinvitation.UserInvitationService;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
@@ -123,6 +124,26 @@ public class StudentService {
         }
 
         return this.studentRepository.save(oldStudent);
+    }
+
+    /**
+     * UC-STU-deactivate-student: revokes the student's access while preserving her submitted work and team
+     * membership (BR-student-lifecycle). Deactivate-only, so a reactivation stays on the existing
+     * {@link #updateStudent} path until UC-STU-reactivate-student is designed.
+     *
+     * @throws StudentAlreadyDeactivatedException extension 3a: the student is already deactivated, so this is
+     *                                             a conflict with her current state rather than a no-op success
+     */
+    public Student deactivateStudent(Integer studentId) {
+        Student student = this.studentRepository.findById(studentId)
+                .orElseThrow(() -> new ObjectNotFoundException("student", studentId));
+
+        if (!student.isEnabled()) {
+            throw new StudentAlreadyDeactivatedException("This student is already deactivated.");
+        }
+
+        student.setEnabled(false);
+        return this.studentRepository.save(student);
     }
 
     public void deleteStudent(Integer studentId) {
