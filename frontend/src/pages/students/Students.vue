@@ -39,7 +39,7 @@
           <el-tag type="danger" v-else>Disabled</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="Operations" width="120">
+      <el-table-column label="Operations" width="160">
         <template #default="{ row }">
           <el-button
             icon="Edit"
@@ -47,6 +47,15 @@
             plain
             type="primary"
             @click.stop="showEditStudentDialog(row)"
+          ></el-button>
+          <el-button
+            v-if="row.enabled"
+            icon="CircleClose"
+            circle
+            plain
+            type="danger"
+            data-cy="deactivate-student"
+            @click.stop="confirmDeactivate(row)"
           ></el-button>
         </template>
       </el-table-column>
@@ -78,15 +87,16 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { searchStudents } from '@/apis/student'
+import { deactivateStudent, searchStudents } from '@/apis/student'
 import type {
+  DeactivateStudentResponse,
   SearchStudentByCriteriaResponse,
   Student,
   StudentSearchCriteria
 } from '@/apis/student/types'
 import { useSettingsStore } from '@/stores/settings'
 import EditStudentForm from './EditStudentForm.vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const searchCriteria = ref<StudentSearchCriteria>({
   sectionId: NaN,
@@ -161,6 +171,29 @@ function showEditStudentDialog(student: Student) {
 
 function closeDialog() {
   dialogVisible.value = false
+  loadStudents()
+}
+
+// UC-STU-deactivate-student: revokes the student's access while keeping her account, her submitted work, and
+// her team membership (BR-student-lifecycle). Reversible via the Status switch on the edit form until
+// UC-STU-reactivate-student gets its own designed path.
+async function confirmDeactivate(student: Student) {
+  try {
+    await ElMessageBox.confirm(
+      `${student.firstName} ${student.lastName} will no longer be able to log in or submit weekly activity reports and peer evaluations. Her account and her previously submitted work are kept, and this can be reversed later.`,
+      'Deactivate student',
+      {
+        confirmButtonText: 'Deactivate',
+        cancelButtonText: 'Cancel',
+        type: 'warning'
+      }
+    )
+  } catch {
+    return // 5a: the instructor cancels, so the system takes no action
+  }
+
+  const result: DeactivateStudentResponse = await deactivateStudent(student.id as number)
+  ElMessage.success(`${result.data.firstName} ${result.data.lastName} has been deactivated`)
   loadStudents()
 }
 
