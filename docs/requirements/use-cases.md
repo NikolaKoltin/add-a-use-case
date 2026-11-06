@@ -1473,6 +1473,16 @@ Details:
 7. Use case ends.
 
 **Extensions:**
+- **1a. The course admin or instructor is neither an instructor assigned to the student's course section nor the course admin who owns its course, or the named student no longer exists:**
+  - 1a1. The system refuses the request (BR-section-scoped-access, BR-role-based-access).
+  - 1a2. Use case ends.
+- **3a. The student is already deactivated:**
+  - 3a1. The system rejects the request and informs the course admin or instructor that the student is already deactivated.
+  - 3a2. Use case ends.
+- **5a. The course admin or instructor cancels at the confirmation:**
+  - 5a1. The system takes no action.
+  - 5a2. Use case ends.
+
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
 **Business Rules:** BR-student-lifecycle
