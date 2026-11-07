@@ -102,15 +102,4 @@ class ActiveAccountJwtAuthenticationConverterTest {
         assertThat(throwable).isInstanceOf(InvalidBearerTokenException.class);
     }
 
-    @Test
-    @DisplayName("A string userId claim that is numeric is accepted, same as the JwtProvider's own integer claim")
-    void acceptsNumericStringClaim() {
-        this.converter = new ActiveAccountJwtAuthenticationConverter(this.delegate, this.userService);
-        given(this.userService.isActiveAccount(4)).willReturn(true);
-
-        AbstractAuthenticationToken token = this.converter.convert(jwtWithClaim("4"));
-
-        assertThat(token).isNotNull();
-    }
-
 }

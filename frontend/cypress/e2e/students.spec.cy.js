@@ -55,7 +55,7 @@ describe('Deactivate a student', () => {
     cy.contains('.el-table__row', 'Hudson').find('[data-cy=deactivate-student]').click()
 
     cy.get('.el-message-box').contains('button', 'Cancel').click()
-
+    cy.wait(500) // give a late request time to fire before checking that none did
     cy.get('@deactivate.all').should('have.length', 0)
   })
 
