@@ -10,6 +10,7 @@ public class PeerEvaluationAverage {
     private String lastName;
     private String email;
     private String teamName;
+    private boolean enabled;
     private Double averageTotalScore;
     private List<String> publicComments;
     private List<String> privateComments;
@@ -65,6 +66,20 @@ public class PeerEvaluationAverage {
 
     public void setTeamName(String teamName) {
         this.teamName = teamName;
+    }
+
+    /**
+     * Whether the student's account is currently active (BR-student-lifecycle), set from
+     * {@code Student.isEnabled()} as of when this average was generated. A deactivated teammate still appears
+     * in a week's report she was on the team for; this is what tells the UI to mark her inactive rather than
+     * read her {@code averageTotalScore} as a 0.0.
+     */
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
     }
 
     public Double getAverageTotalScore() {

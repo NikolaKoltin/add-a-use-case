@@ -29,13 +29,28 @@ public class UserUtils {
         Object principal = auth.getPrincipal();
         if (!(principal instanceof Jwt jwt)) return null;
 
-        Object claim = jwt.getClaim("userId");
-        if (claim == null) return null;
+        return parseUserIdClaim(jwt.getClaim("userId"));
+    }
 
+    /**
+     * Reads the {@code userId} claim {@link team.projectpulse.security.JwtProvider} signs (an {@code Integer}
+     * in practice), tolerating the {@code Long}/numeric-{@code String} shapes a JWT library can hand back.
+     * Shared with {@link team.projectpulse.security.ActiveAccountJwtAuthenticationConverter}, which reads this
+     * same claim directly off the {@code Jwt} before an {@code Authentication} exists for {@link #getUserId()}
+     * to read it from.
+     *
+     * @return the claim as an id, or {@code null} if it is missing or not a recognizable number
+     */
+    public static Integer parseUserIdClaim(Object claim) {
         if (claim instanceof Integer i) return i;
         if (claim instanceof Long l) return l.intValue();
-        if (claim instanceof String s) return Integer.valueOf(s);
-
+        if (claim instanceof String s) {
+            try {
+                return Integer.valueOf(s);
+            } catch (NumberFormatException ex) {
+                return null;
+            }
+        }
         return null;
     }
 

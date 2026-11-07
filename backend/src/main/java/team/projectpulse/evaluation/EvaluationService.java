@@ -72,6 +72,14 @@ public class EvaluationService {
             throw new PeerEvaluationIllegalArgumentException("You have already submitted an evaluation for " + newPeerEvaluation.getEvaluatee().getFirstName() + " in this week.");
         }
 
+        // BR-evaluatee-active: once a student is deactivated (UC-STU-deactivate-student), no new peer evaluation of
+        // her may be submitted, for any week. This guards addPeerEvaluation only, not updatePeerEvaluation: an
+        // evaluation already submitted before her deactivation is unaffected and remains editable within its own
+        // still-open window.
+        if (!newPeerEvaluation.getEvaluatee().isEnabled()) {
+            throw new PeerEvaluationIllegalArgumentException("You cannot submit a peer evaluation of " + newPeerEvaluation.getEvaluatee().getFirstName() + "; her account has been deactivated.");
+        }
+
         return this.evaluationRepository.save(newPeerEvaluation);
     }
 
@@ -178,6 +186,9 @@ public class EvaluationService {
         peerEvaluationAverage.setFirstName(student.getFirstName());
         peerEvaluationAverage.setLastName(student.getLastName());
         peerEvaluationAverage.setEmail(student.getEmail());
+        // BR-student-lifecycle: a deactivated teammate still appears every week she was on the team for; this is
+        // what lets the UI mark her row inactive instead of reading her averageTotalScore as a 0.0.
+        peerEvaluationAverage.setEnabled(student.isEnabled());
         // Student.team is optional: a student is enrolled in a course section before she is assigned to a team, and
         // BR-team-assignment-required keeps her from authoring until she is, so the team name is simply absent for
         // her. Dereferencing it here was a 500 on her own results page and on the instructor's performance dashboard

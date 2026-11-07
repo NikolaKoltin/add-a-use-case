@@ -6,6 +6,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import team.projectpulse.AbstractIntegrationTest;
 import team.projectpulse.evaluation.dto.PeerEvaluationDto;
 import team.projectpulse.evaluation.dto.RatingDto;
+import team.projectpulse.student.Student;
+import team.projectpulse.student.StudentRepository;
 import team.projectpulse.system.StatusCode;
 import org.hamcrest.Matchers;
 import org.json.JSONObject;
@@ -55,6 +57,9 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     PeerEvaluationRepository evaluationRepository;
+
+    @Autowired
+    StudentRepository studentRepository;
 
     @Autowired
     EntityManager entityManager;
@@ -239,6 +244,80 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.message").value("You must be assigned to a team before submitting a peer evaluation."));
     }
 
+    private void deactivate(Integer studentId) {
+        Student student = this.studentRepository.findById(studentId).orElseThrow();
+        student.setEnabled(false);
+        this.studentRepository.save(student);
+        this.entityManager.flush();
+    }
+
+    @Test
+    @DisplayName("BR-evaluatee-active: no new peer evaluation of a deactivated evaluatee may be submitted")
+    void testStudentJohnAddEvaluationOfDeactivatedEvaluateeFails() throws Exception {
+        deactivate(5); // Eric
+
+        List<RatingDto> ratingDtos = List.of(
+                new RatingDto(null, 1, 4.0),
+                new RatingDto(null, 2, 9.0),
+                new RatingDto(null, 3, 7.0),
+                new RatingDto(null, 4, 10.0),
+                new RatingDto(null, 5, 5.0),
+                new RatingDto(null, 6, 6.0)
+        );
+
+        LocalDate fixedDate = LocalDate.of(2023, 9, 15); // 2023-W37, so the previous week is 2023-W36
+        Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+
+        PeerEvaluationDto peerEvaluationDto = new PeerEvaluationDto(null, "2023-W36", 4, "John Smith", 5, "Eric Hudson", ratingDtos, 41.0, "Good job", "Keep it up", null, null);
+        String json = this.jsonMapper.writeValueAsString(peerEvaluationDto);
+
+        this.mockMvc.perform(post(this.baseUrl + "/evaluations").contentType(MediaType.APPLICATION_JSON).content(json).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
+                .andExpect(jsonPath("$.message").value("You cannot submit a peer evaluation of Eric; her account has been deactivated."));
+
+        assertThat(this.evaluationRepository.findByWeekAndEvaluatorIdAndEvaluateeId("2023-W36", 4, 5)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("BR-evaluatee-active: an evaluation submitted before deactivation remains editable within its own still-open window")
+    void testEvaluationSubmittedBeforeDeactivationRemainsEditable() throws Exception {
+        // Evaluation 4 is Eric's (evaluator 5) of a teammate, submitted while everyone was active.
+        // Deactivating the evaluatee afterward must not retroactively lock an edit the submission window still allows.
+        PeerEvaluation existing = this.evaluationRepository.findById(4).orElseThrow();
+        deactivate(existing.getEvaluatee().getId());
+
+        LocalDate fixedDate = LocalDate.of(2023, 8, 8); // the window that covers evaluation 4's week is still open
+        Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+
+        List<RatingDto> ratingDtos = List.of(
+                new RatingDto(null, 1, 4.0),
+                new RatingDto(null, 2, 9.0),
+                new RatingDto(null, 3, 7.0),
+                new RatingDto(null, 4, 10.0),
+                new RatingDto(null, 5, 5.0),
+                new RatingDto(null, 6, 6.0)
+        );
+        PeerEvaluationDto update = new PeerEvaluationDto(4, existing.getWeek(), existing.getEvaluator().getId(), null, existing.getEvaluatee().getId(), null, ratingDtos, 41.0, "Updated after her deactivation", "Updated after her deactivation", null, null);
+        String json = this.jsonMapper.writeValueAsString(update);
+
+        // Evaluation 4's evaluator is Eric (id 5); this test class keeps no token for him, so log in fresh.
+        String ericToken = login("e.hudson@abc.edu");
+
+        this.mockMvc.perform(put(this.baseUrl + "/evaluations/4").contentType(MediaType.APPLICATION_JSON).content(json).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, ericToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS));
+    }
+
+    private String login(String email) throws Exception {
+        MvcResult mvcResult = this.mockMvc.perform(post(this.baseUrl + "/users/login").with(httpBasic(email, "123456"))).andReturn();
+        return "Bearer " + new JSONObject(mvcResult.getResponse().getContentAsString()).getJSONObject("data").getString("token");
+    }
+
     @Test
     @DisplayName("An instructor does not author peer evaluations, and no longer sees a missing-student error")
     void testAdminBingyangCannotAddEvaluation() throws Exception {
@@ -407,6 +486,27 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.peerEvaluationAverages[0].lastName").value("Smith"))
                 .andExpect(jsonPath("$.data.peerEvaluationAverages[0].averageTotalScore").value(Matchers.closeTo(51.33, 0.01)))
                 .andExpect(jsonPath("$.data.studentsMissingPeerEvaluations").doesNotExist()); // Now GET /sections/{sectionId}/submission-status
+    }
+
+    @Test
+    @DisplayName("BR-student-lifecycle: a deactivated team member's row is marked inactive and still appears in the section report")
+    void testSectionReportMarksDeactivatedTeamMemberInactive() throws Exception {
+        // Eric (id 5) is index [1] in this section's report (John, id 4, is [0])
+        MvcResult before = this.mockMvc.perform(get(this.baseUrl + "/evaluations/sections/2/week/2023-W31").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminBingyangToken))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages[1].studentId").value(5))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages[1].enabled").value(true))
+                .andReturn();
+        double ericsScoreBeforeDeactivation = new JSONObject(before.getResponse().getContentAsString())
+                .getJSONObject("data").getJSONArray("peerEvaluationAverages").getJSONObject(1).getDouble("averageTotalScore");
+
+        deactivate(5);
+
+        this.mockMvc.perform(get(this.baseUrl + "/evaluations/sections/2/week/2023-W31").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminBingyangToken))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages", Matchers.hasSize(11))) // still every team member, Eric included
+                .andExpect(jsonPath("$.data.peerEvaluationAverages[0].enabled").value(true)) // John, unaffected
+                .andExpect(jsonPath("$.data.peerEvaluationAverages[1].studentId").value(5))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages[1].enabled").value(false))
+                .andExpect(jsonPath("$.data.peerEvaluationAverages[1].averageTotalScore").value(Matchers.closeTo(ericsScoreBeforeDeactivation, 0.001))); // the score is untouched, not nulled or zeroed
     }
 
     @Test

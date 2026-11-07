@@ -12,6 +12,7 @@ import team.projectpulse.system.exception.PeerEvaluationIllegalArgumentException
 import team.projectpulse.team.Team;
 import team.projectpulse.user.MyUserPrincipal;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -415,6 +416,27 @@ class EvaluationServiceTest {
     }
 
     @Test
+    @DisplayName("BR-evaluatee-active: no new peer evaluation of a deactivated evaluatee may be submitted")
+    void testAddPeerEvaluationOfDeactivatedEvaluateeFails() {
+        // Given
+        LocalDate fixedDate = LocalDate.of(2023, 8, 8);
+        Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+
+        this.woody.setEnabled(false);
+        PeerEvaluation newPeerEvaluation = new PeerEvaluation("2023-W31", amanda, woody, List.of(), "public comment", "private comment");
+
+        // When
+        Throwable throwable = catchThrowable(() -> this.evaluationService.addPeerEvaluation(newPeerEvaluation));
+
+        // Then
+        assertThat(throwable)
+                .isInstanceOf(PeerEvaluationIllegalArgumentException.class)
+                .hasMessage("You cannot submit a peer evaluation of Woody; her account has been deactivated.");
+    }
+
+    @Test
     void testUpdatePeerEvaluation() {
         // Given
         // Aug 8, 2023 falls in 2023-W32, which makes 2023-W31 the previous week and this evaluation's window open
@@ -517,6 +539,33 @@ class EvaluationServiceTest {
         assertThat(peerEvaluationAverage.getRatingAverages().get(3).getAverageScore()).isCloseTo(8.66, within(0.01));
         assertThat(peerEvaluationAverage.getRatingAverages().get(4).getAverageScore()).isCloseTo(8.0, within(0.01));
         assertThat(peerEvaluationAverage.getRatingAverages().get(5).getAverageScore()).isCloseTo(8.0, within(0.01));
+    }
+
+    @Test
+    @DisplayName("BR-student-lifecycle: a deactivated student's average is marked inactive, not scored 0.0")
+    void testGetPeerEvaluationAverageSetsEnabledFromStudent() {
+        // Given
+        given(this.evaluationRepository.findByWeekAndEvaluateeId("2023-W31", 4)).willReturn(this.ericsW31Evaluations);
+        this.eric.setEnabled(false);
+
+        // When
+        PeerEvaluationAverage peerEvaluationAverage = this.evaluationService.getPeerEvaluationAverage("2023-W31", eric);
+
+        // Then
+        assertThat(peerEvaluationAverage.isEnabled()).isFalse();
+        assertThat(peerEvaluationAverage.getAverageTotalScore()).isCloseTo(50.0, within(0.01)); // the score itself is untouched
+    }
+
+    @Test
+    void testGetPeerEvaluationAverageForAnActiveStudentIsUnaffected() {
+        // Given
+        given(this.evaluationRepository.findByWeekAndEvaluateeId("2023-W31", 4)).willReturn(this.ericsW31Evaluations);
+
+        // When
+        PeerEvaluationAverage peerEvaluationAverage = this.evaluationService.getPeerEvaluationAverage("2023-W31", eric);
+
+        // Then
+        assertThat(peerEvaluationAverage.isEnabled()).isTrue();
     }
 
     @Test

@@ -37,6 +37,7 @@
       <el-table-column label="Average Total Score" min-width="100px" fixed>
         <template #default="{ row }">
           {{ row.averageTotalScore.toFixed(2) }}
+          <el-tag v-if="!row.enabled" type="info" size="small">Inactive</el-tag>
         </template>
       </el-table-column>
       <el-table-column v-for="criterion in criteria" :key="criterion.criterionId" min-width="150px">

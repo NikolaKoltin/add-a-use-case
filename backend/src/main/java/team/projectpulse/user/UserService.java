@@ -37,6 +37,20 @@ public class UserService implements UserDetailsService {
         return this.userRepository.findByEmail(email).isPresent();
     }
 
+    /**
+     * FR-SEC-active-account: whether the named account may still authenticate or make an authenticated
+     * request, right now rather than as of whenever its JWT was minted. A primary-key read, so this runs on
+     * every bearer-authenticated request without a migration or a cache to invalidate.
+     *
+     * @param userId the id from the JWT's {@code userId} claim; {@code null} is not an active account
+     */
+    public boolean isActiveAccount(Integer userId) {
+        if (userId == null) {
+            return false;
+        }
+        return this.userRepository.existsByIdAndEnabledTrue(userId);
+    }
+
     public void resetPassword(Map<String, String> resetPasswordInfo) {
         String email = resetPasswordInfo.get("email");
         String token = resetPasswordInfo.get("token");
