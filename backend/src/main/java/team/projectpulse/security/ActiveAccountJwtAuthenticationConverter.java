@@ -1,5 +1,6 @@
 package team.projectpulse.security;
 
+import team.projectpulse.system.UserUtils;
 import team.projectpulse.user.UserService;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
@@ -38,7 +39,7 @@ public class ActiveAccountJwtAuthenticationConverter implements Converter<Jwt, A
     public AbstractAuthenticationToken convert(Jwt jwt) {
         AbstractAuthenticationToken authentication = this.delegate.convert(jwt);
 
-        Integer userId = readUserId(jwt.getClaim("userId"));
+        Integer userId = UserUtils.parseUserIdClaim(jwt.getClaim("userId"));
         if (userId == null) {
             throw new InvalidBearerTokenException("The access token does not name a valid account.");
         }
@@ -48,23 +49,6 @@ public class ActiveAccountJwtAuthenticationConverter implements Converter<Jwt, A
         }
 
         return authentication;
-    }
-
-    private static Integer readUserId(Object claim) {
-        if (claim instanceof Integer i) {
-            return i;
-        }
-        if (claim instanceof Long l) {
-            return l.intValue();
-        }
-        if (claim instanceof String s) {
-            try {
-                return Integer.valueOf(s);
-            } catch (NumberFormatException ex) {
-                return null;
-            }
-        }
-        return null;
     }
 
 }
